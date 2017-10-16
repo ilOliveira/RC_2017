@@ -1,9 +1,7 @@
 
-
 /**
  * Ftp17Server - File transfer protocol 2017 edition - RC FCT/UNL
  **/
-
 
 import java.net.*;
 import java.util.*;
@@ -82,12 +80,13 @@ public class Ftp17Server implements Runnable {
 				socket.receive(datagram);
 				Ftp17Packet pkt = new Ftp17Packet(datagram.getData(), datagram.getLength());
 				switch (pkt.getOpcode()) {
-				case FinAckPacket.DATA:
+				case Ftp17Packet.DATA:
 
 					// is the data packet outside the window ?
 					if (pkt.getSeqN() < expectedByte || pkt.getSeqN() > expectedByte + windowSize) {
-						System.out.println(pkt.getSeqN());
-						System.out.println("EXP: "+expectedByte);
+						System.out.println("pkt.getSeqN: " + pkt.getSeqN());
+						System.out.println("expectedByte: " + expectedByte);
+						System.out.println(windowSize);
 						System.err.println("received packet out of window, ignoring...");
 						socket.send(new AckPacket(expectedByte, pkt.getScratchPad(), true).toDatagram(cltAddr));
 						continue;
@@ -109,6 +108,8 @@ public class Ftp17Server implements Runnable {
 					while (window.size() > 0 && window.firstKey() == expectedByte) {
 						int size = window.remove(expectedByte);
 						expectedByte += size;
+						System.out.println("SIZE: "+size);
+						System.out.println("EXPBYTE: "+expectedByte);
 					}
 					socket.send(new AckPacket(expectedByte, pkt.getScratchPad(), false).toDatagram(cltAddr));
 					break;

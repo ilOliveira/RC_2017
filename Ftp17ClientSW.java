@@ -1,7 +1,4 @@
 
-
-
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -13,13 +10,12 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-
 public class Ftp17ClientSW {
 	static final int DEFAULT_TIMEOUT = 1000;
 	static final int DEFAULT_MAX_RETRIES = 5;
 	private static final int DEFAULT_BLOCK_SIZE = 1024;
 	static int WindowSize = 10; // this client is a stop and
-												// wait one
+								// wait one
 	static int BlockSize = DEFAULT_BLOCK_SIZE;
 	static int Timeout = DEFAULT_TIMEOUT;
 
@@ -32,7 +28,7 @@ public class Ftp17ClientSW {
 	private DatagramSocket socket;
 	private BlockingQueue<Ftp17Packet> receiverQueue;
 	volatile private SocketAddress srvAddress;
-	
+
 	int allSent;
 
 	Ftp17ClientSW(String filename, SocketAddress srvAddress) {
@@ -43,17 +39,18 @@ public class Ftp17ClientSW {
 	private void sendData(byte[] block, int size, long sn, int pos)
 			throws IOException {
 		// Builds message to send
-		Ftp17Packet data = new Ftp17Packet().putShort(Ftp17Packet.DATA).putLong(sn).putBytes(block, size)
-				;
+		System.out.println("SN: " + sn);
+		Ftp17Packet data = new Ftp17Packet().putShort(Ftp17Packet.DATA)
+				.putLong(sn).putBytes(block, size);
 		// Add packet to the sent list
 		System.err.println("sending: " + data);
-		
+
 		sendTimes.add(pos, System.currentTimeMillis());
-		
+
 		sent.add(pos, data);
-		//System.out.println("data: "+data.getBlockData().length);
-		ackSN.add(pos, sn+data.getBlockData().length);
-		
+		// System.out.println("data: "+data.getBlockData().length);
+		ackSN.add(pos, sn + data.getBlockData().length);
+
 		socket.send(data.toDatagram(srvAddress));
 
 	}
@@ -114,18 +111,22 @@ public class Ftp17ClientSW {
 			int n;
 			byte[] buffer = new byte[DEFAULT_BLOCK_SIZE];
 			int lastSent = 0;
-		//	while (true) {
-				while (lastSent <= 10) {
+			while (true) {
+				while (lastSent < WindowSize) {
 
 					if ((n = f.read(buffer)) > 0) {
-						System.out.println("n: "+n);
+						System.out.println("n: " + n);
+
 						sendData(buffer, n, nextByte, lastSent);
-						System.out.println("NextBYTE: "+n+nextByte);
-						nextByte += n;
+
+						System.out.println("NextBYTE: " + ackSN.get(lastSent));
+						nextByte = ackSN.get(lastSent);
 						lastSent++;
+						System.out.println("LAst Sent: "+lastSent);
+						System.out.println("Window: "+WindowSize);
 						stats.newPacketSent(n);
 					} else {
-						// send the FIN packet
+						// send the FIN packetsendData
 						System.err.println("sending: "
 								+ new FinPacket(nextByte));
 						socket.send(new FinPacket(nextByte)
@@ -133,11 +134,11 @@ public class Ftp17ClientSW {
 						break;
 					}
 				}
-				 allSent=lastSent;
+				allSent = lastSent;
 				do {
 					Ftp17Packet ack = receiverQueue.poll(Timeout,
 							TimeUnit.MILLISECONDS);
-					if (ack != null){
+					if (ack != null) {
 						if (ack.getOpcode() == Ftp17Packet.FINACK) {
 
 							f.close();
@@ -146,42 +147,41 @@ public class Ftp17ClientSW {
 							System.out.println("Done...");
 							break;
 
-						} 
-						if (ack.getOpcode() == Ftp17Packet.ACK){
-							if (ackSN.get(allSent - lastSent) == ack
-									.getSeqN()) {
+						}
+						if (ack.getOpcode() == Ftp17Packet.ACK) {
+							if (ackSN.get(allSent - lastSent) == ack.getSeqN()) {
 
 								stats.newTimeoutMeasure(System
 										.currentTimeMillis()
-										- sendTimes.get(allSent-lastSent));
-								
+										- sendTimes.get(allSent - lastSent));
+
 								System.err.println("got expected ack: "
 										+ ack.getSeqN());
 								lastSent--;
-						
+
 							} else {
-								System.err.println("got wrong ack "+ ack.getSeqN());
-								System.out.println("ACk compared: "+ackSN.get(allSent-lastSent));
-							//	lastSent = allSent;
-						//		resendWindow();
-							}}
-						else {
+								System.err.println("got wrong ack "
+										+ ack.getSeqN());
+								System.out.println("ACk compared: "
+										+ ackSN.get(allSent - lastSent));
+								lastSent = allSent;
+								resendWindow();
+							}
+						} else {
 							System.err.println("got unexpected packet (error)");
-							//lastSent = allSent;
+							lastSent = allSent;
 
-							//resendWindow();
+							resendWindow();
 						}
-					}
-					else {
+					} else {
 						System.err.println("timeout...");
-					//lastSent = allSent;
-
+ 						break;
 						//resendWindow();
 					}
-						
+
 				} while (lastSent >= 0);
 
-	//		}// close the loop
+			}// close the loop
 		} catch (Exception x) {
 			x.printStackTrace();
 			System.exit(0);
@@ -269,14 +269,14 @@ public class Ftp17ClientSW {
 			switch (args.length) {
 			case 5:
 				// Ignored for S/W Client
-				// WindowSize = Integer.parseInt(args[4]);
+				WindowSize = Integer.parseInt(args[4]);
 			case 4:
 				BlockSize = Integer.valueOf(args[3]);
 				// BlockSize must be at least 1
 				if (BlockSize <= 0)
 					BlockSize = DEFAULT_BLOCK_SIZE;
 				// for S/W Client WindowSize is equal to BlockSize
-				WindowSize = BlockSize;
+				// WindowSize = BlockSize;
 			case 3:
 				Timeout = Integer.valueOf(args[2]);
 				// Timeout must be at least 1 ms
@@ -294,7 +294,8 @@ public class Ftp17ClientSW {
 		}
 		String filename = args[0];
 		String server = args[1];
-		SocketAddress srvAddr = new InetSocketAddress(server, Ftp17Packet.FTP17_PORT);
+		SocketAddress srvAddr = new InetSocketAddress(server,
+				Ftp17Packet.FTP17_PORT);
 		new Ftp17ClientSW(filename, srvAddr).sendFile();
 	}
 
